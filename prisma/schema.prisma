@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = "postgresql://neondb_owner:npg_Asgpwnt5i1aC@ep-withered-mud-ayueu8lb-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require&connect_timeout=30"
+}
+
+model Job {
+  id           String      @id @default(uuid())
+  title        String
+  company      String
+  location     String
+  compensation String
+  type         String
+  deadline     String
+  tags         String
+  isClosed     Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  applicants   Applicant[]
+}
+
+model Applicant {
+  id             String    @id @default(uuid())
+  jobId          String
+  name           String
+  college        String
+  degree         String
+  tier           String
+  compositeScore Int
+  status         String    @default("Pending Review")
+  scheduledDate  String?
+  scheduledTime  String?
+  interviewNotes String?
+  createdAt      DateTime  @default(now())
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Bounty {
+  id          String             @id @default(uuid())
+  company     String
+  title       String
+  prize       String
+  points      Int
+  tags        String
+  isClosed    Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  submissions BountySubmission[]
+}
+
+model BountySubmission {
+  id              String   @id @default(uuid())
+  bountyId        String
+  authorName      String
+  authorTier      String
+  prUrl           String
+  testPassed      Boolean  @default(true)
+  benchmarkScore  String
+  status          String   @default("Under Review")
+  solutionSnippet String
+  createdAt       DateTime @default(now())
+  bounty          Bounty   @relation(fields: [bountyId], references: [id], onDelete: Cascade)
+}
+
+model CourseModule {
+  id          String   @id @default(uuid())
+  roleTarget  String
+  title       String
+  description String
+  lessonsJson String
+  createdAt   DateTime @default(now())
+}
+
+model MarketTrend {
+  id             String   @id @default(uuid())
+  category       String
+  demandScore    Int
+  growthRate     String
+  topSkills      String
+  avgSalaryRange String
+  updatedAt      DateTime @updatedAt
+}
+
+model CodingExam {
+  id          String        @id @default(uuid())
+  title       String
+  topic       String
+  difficulty  String
+  problemDesc String
+  starterCode String
+  testCases   String
+  submissions ExamAttempt[]
+}
+
+model ExamAttempt {
+  id            String     @id @default(uuid())
+  examId        String
+  studentName   String
+  submittedCode String
+  testsPassed   Int
+  totalTests    Int
+  aiFeedback    String
+  complexity    String
+  score         Int
+  createdAt     DateTime   @default(now())
+  exam          CodingExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+}
