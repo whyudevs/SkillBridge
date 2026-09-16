@@ -26,6 +26,12 @@ import {
   CheckCircle2,
   Medal
 } from "lucide-react";
+import { 
+  getPlatformBounties, 
+  getStudentData, 
+  saveStudentData, 
+  type DeployedBounty 
+} from "@/lib/studentDataStore";
 
 export type StudentTier = "Diamond" | "Platinum" | "Gold" | "Silver" | "Bronze";
 
@@ -97,17 +103,6 @@ export interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-interface BountyItem {
-  id: string;
-  title: string;
-  company: string;
-  reward: number;
-  difficulty: string;
-  tags: string[];
-  description: string;
-  starterCode: string;
-}
-
 export default function DashboardLayout({
   userRole,
   userName,
@@ -126,86 +121,13 @@ export default function DashboardLayout({
   const [trendsData, setTrendsData] = useState<any>(null);
   const [isLoadingTrends, setIsLoadingTrends] = useState<boolean>(false);
 
-  const [activeBountyWorkspace, setActiveBountyWorkspace] = useState<BountyItem | null>(null);
+  // Synchronized Dynamic Bounties State
+  const [bountiesList, setBountiesList] = useState<DeployedBounty[]>([]);
+  const [activeBountyWorkspace, setActiveBountyWorkspace] = useState<DeployedBounty | null>(null);
   const [bountyCode, setBountyCode] = useState<string>("");
   const [isSubmittingBounty, setIsSubmittingBounty] = useState<boolean>(false);
   const [bountyFeedback, setBountyFeedback] = useState<any | null>(null);
   const [bountyPoints, setBountyPoints] = useState<number>(340);
-
-  const defaultBounties: BountyItem[] = [
-    {
-      id: "bounty-1",
-      title: "Implement Lock-Free Single-Producer Single-Consumer Ring Buffer",
-      company: "Distributed Systems Lab",
-      reward: 250,
-      difficulty: "Advanced",
-      tags: ["Concurrency", "Memory Ordering", "C++ / TS"],
-      description: `Design a bounded Ring Buffer queue that allows one thread to push and another thread to pop without acquiring mutex locks. Ensure correct atomic index updates and memory barriers.`,
-      starterCode: `// Implement lock-free bounded ring buffer
-class SPSCQueue<T> {
-  private buffer: (T | null)[];
-  private capacity: number;
-  private head: number = 0;
-  private tail: number = 0;
-
-  constructor(capacity: number) {
-    this.capacity = capacity;
-    this.buffer = new Array(capacity).fill(null);
-  }
-
-  enqueue(item: T): boolean {
-    const nextTail = (this.tail + 1) % this.capacity;
-    if (nextTail === this.head) return false;
-    this.buffer[this.tail] = item;
-    this.tail = nextTail;
-    return true;
-  }
-
-  dequeue(): T | null {
-    if (this.head === this.tail) return null;
-    const item = this.buffer[this.head];
-    this.buffer[this.head] = null;
-    this.head = (this.head + 1) % this.capacity;
-    return item;
-  }
-}`,
-    },
-    {
-      id: "bounty-2",
-      title: "Optimized Token Bucket Rate Limiter with Redis Lua Scripts",
-      company: "Edge Cloud Infrastructure",
-      reward: 180,
-      difficulty: "Intermediate",
-      tags: ["Distributed Systems", "Redis", "Rate Limiting"],
-      description: `Write a high-throughput atomic sliding window or token-bucket rate limiter. It must handle burst traffic up to 500 req/s while preventing race conditions across clustered workers.`,
-      starterCode: `export async function checkRateLimit(clientId: string, limit: number, intervalMs: number) {
-  const now = Date.now();
-  return { 
-    allowed: true, 
-    remainingTokens: limit - 1, 
-    resetTimeMs: now + intervalMs 
-  };
-}`,
-    },
-    {
-      id: "bounty-3",
-      title: "Vector Cosine Similarity Kernel Optimization",
-      company: "NeuroSearch Inc.",
-      reward: 320,
-      difficulty: "Advanced",
-      tags: ["Vector Search", "Linear Algebra", "SIMD"],
-      description: `Implement an optimized batch cosine similarity calculator between a query embedding and 10,000 document vectors.`,
-      starterCode: `export function cosineSimilarityBatch(queryVector: number[], matrix: number[][]): number[] {
-  return matrix.map(row => {
-    let dot = 0;
-    for (let i = 0; i < queryVector.length; i++) {
-      dot += queryVector[i] * row[i];
-    }
-    return dot;
-  });
-}`,
-    }
-  ];
 
   const defaultDomains = [
     "Distributed AI & Systems Architecture",
@@ -230,6 +152,34 @@ class SPSCQueue<T> {
       document.body.classList.remove("dark");
       setIsDark(false);
     }
+
+    // Load active platform bounties & student point telemetry
+    const loadBounties = () => {
+      const allBounties = getPlatformBounties();
+      setBountiesList(allBounties.filter(b => b.status === "Active"));
+    };
+    loadBounties();
+
+    const studentInfo = getStudentData();
+    if (studentInfo) {
+      setBountyPoints(studentInfo.bountyPoints);
+    }
+
+    const handleBountyUpdate = () => loadBounties();
+    const handleTelemetryUpdate = () => {
+      const updated = getStudentData();
+      if (updated) setBountyPoints(updated.bountyPoints);
+    };
+
+    window.addEventListener("platform_bounties_updated", handleBountyUpdate);
+    window.addEventListener("student_telemetry_updated", handleTelemetryUpdate);
+    window.addEventListener("storage", handleBountyUpdate);
+
+    return () => {
+      window.removeEventListener("platform_bounties_updated", handleBountyUpdate);
+      window.removeEventListener("student_telemetry_updated", handleTelemetryUpdate);
+      window.removeEventListener("storage", handleBountyUpdate);
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -282,7 +232,7 @@ class SPSCQueue<T> {
     setCustomDomainQuery("");
   };
 
-  const handleOpenWorkspace = (bounty: BountyItem) => {
+  const handleOpenWorkspace = (bounty: DeployedBounty) => {
     setActiveBountyWorkspace(bounty);
     setBountyCode(bounty.starterCode);
     setBountyFeedback(null);
@@ -311,7 +261,15 @@ class SPSCQueue<T> {
       setBountyFeedback(data);
 
       if (data.compositeScore >= 70) {
-        setBountyPoints((prev) => prev + activeBountyWorkspace.reward);
+        const newPoints = bountyPoints + activeBountyWorkspace.reward;
+        setBountyPoints(newPoints);
+        
+        // Sync with student store
+        const sData = getStudentData();
+        if (sData) {
+          sData.bountyPoints = newPoints;
+          saveStudentData(sData);
+        }
       }
     } catch (err) {
       console.error("Evaluation error:", err);
@@ -338,7 +296,7 @@ class SPSCQueue<T> {
   ];
 
   const academicianTabs = [
-    { id: "dashboard", label: "Faculty Dashboard", icon: LayoutDashboard },
+    
     { id: "trends", label: "Market Trends", icon: TrendingUp },
     { id: "learn", label: "Course Modules", icon: BookOpen },
     { id: "planner", label: "Syllabus Architect", icon: Sparkles },
@@ -469,7 +427,7 @@ class SPSCQueue<T> {
                     </span>
                   </div>
                   <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-                    Live Production Bounties
+                    Live Production Bounties ({bountiesList.length})
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
                     Solve real distributed systems bugs and algorithmic tasks to earn bounty points and fast-track interviews.
@@ -484,58 +442,68 @@ class SPSCQueue<T> {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {defaultBounties.map((bounty) => (
-                  <div
-                    key={bounty.id}
-                    className="p-6 rounded-3xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4 hover:border-blue-500/50 transition duration-150"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
-                          {bounty.difficulty}
-                        </span>
-                        <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                          +{bounty.reward} Pts
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
-                          {bounty.title}
-                        </h3>
-                        <span className="text-xs text-slate-400 font-mono block mt-0.5">
-                          {bounty.company}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed">
-                        {bounty.description}
-                      </p>
-
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {bounty.tags.map((tag: string, i: number) => (
-                          <span
-                            key={i}
-                            className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenWorkspace(bounty)}
-                      className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+              {bountiesList.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {bountiesList.map((bounty) => (
+                    <div
+                      key={bounty.id}
+                      className="p-6 rounded-3xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between space-y-4 hover:border-blue-500/50 transition duration-150"
                     >
-                      <span>Open Workspace</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
+                            {bounty.difficulty}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                            +{bounty.reward} Pts
+                          </span>
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                            {bounty.title}
+                          </h3>
+                          <span className="text-xs text-slate-400 font-mono block mt-0.5">
+                            {bounty.company}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed">
+                          {bounty.description}
+                        </p>
+
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {bounty.tags.map((tag: string, i: number) => (
+                            <span
+                              key={i}
+                              className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenWorkspace(bounty)}
+                        className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                      >
+                        <span>Open Workspace</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-12 text-center bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">
+                  <Coins size={28} className="text-slate-400 mx-auto" />
+                  <h4 className="text-base font-bold text-slate-900 dark:text-white">No active bounties available</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    New engineering tasks published by recruiters will appear here automatically.
+                  </p>
+                </div>
+              )}
 
               {activeBountyWorkspace && (
                 <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-150">

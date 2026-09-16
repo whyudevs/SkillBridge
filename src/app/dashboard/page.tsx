@@ -9,8 +9,12 @@ import {
   getStudentData, 
   saveStudentData, 
   scheduleInterview,
+  getPlatformBounties,
+  savePlatformBounty,
+  removePlatformBounty,
   type StudentProfileData,
-  type ApplicationItem 
+  type ApplicationItem,
+  type DeployedBounty
 } from "@/lib/studentDataStore";
 import { 
   Award, 
@@ -33,7 +37,16 @@ import {
   Briefcase,
   Building2,
   BookOpen,
-  Terminal
+  Terminal,
+  FileText,
+  HelpCircle,
+  Check,
+  Loader2,
+  ArrowRight,
+  TrendingUp,
+  Search,
+  PlayCircle,
+  CheckCircle
 } from "lucide-react";
 
 export interface JobRequisition {
@@ -56,6 +69,12 @@ export default function DashboardPage() {
 
   // Recruiter Company Context
   const [recruiterCompany, setRecruiterCompany] = useState<string>("Nexus Dynamics");
+
+  // Academician Syllabus Architect States
+  const [syllabusTopic, setSyllabusTopic] = useState<string>("");
+  const [syllabusLevel, setSyllabusLevel] = useState<string>("Advanced Undergraduate");
+  const [isGeneratingSyllabus, setIsGeneratingSyllabus] = useState<boolean>(false);
+  const [syllabusData, setSyllabusData] = useState<any | null>(null);
 
   // Recruiter Postings State
   const [postedJobs, setPostedJobs] = useState<JobRequisition[]>([
@@ -103,9 +122,9 @@ export default function DashboardPage() {
   const [isPointsHovered, setIsPointsHovered] = useState<boolean>(false);
 
   // Student telemetry
-  const [claimedMcq, setClaimedMcq] = useState<string[]>([]);
   const [bountyBalance, setBountyBalance] = useState<number>(340);
   const [studentData, setStudentData] = useState<StudentProfileData | null>(null);
+  const [bountiesRefreshKey, setBountiesRefreshKey] = useState<number>(0);
 
   // Industry recruitment scheduling state
   const [selectedAppId, setSelectedAppId] = useState<string>("");
@@ -218,7 +237,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     const queryRole = params?.get("role");
-    
+     
     const storedRole = 
       queryRole || 
       localStorage.getItem("userRole") || 
@@ -234,6 +253,7 @@ export default function DashboardPage() {
       } else if (normalized === "academician" || normalized === "faculty") {
         setUserRole("academician");
         setUserName((prev) => (prev === "Alex Vance" ? "Prof. Radhika" : prev));
+        setActiveTab("trends");
       } else {
         setUserRole("student");
       }
@@ -257,7 +277,7 @@ export default function DashboardPage() {
       try {
         setPostedJobs(JSON.parse(savedCustomJobs));
       } catch {
-        // Fallback to initial defaults
+        // Fallback
       }
     }
 
@@ -335,6 +355,49 @@ export default function DashboardPage() {
     setNewSkills("Go, Kubernetes, Redis");
   };
 
+  const handleGenerateSyllabus = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!syllabusTopic.trim() || isGeneratingSyllabus) return;
+
+    setIsGeneratingSyllabus(true);
+    try {
+      const res = await fetch("/api/ai/generate-syllabus", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: syllabusTopic.trim(),
+          level: syllabusLevel,
+        }),
+      });
+      const data = await res.json();
+      setSyllabusData(data);
+    } catch (err) {
+      console.error("Failed to generate syllabus architecture:", err);
+      setSyllabusData({
+        courseTitle: syllabusTopic.trim(),
+        targetLevel: syllabusLevel,
+        creditHours: 4,
+        description: `Comprehensive academic curriculum for ${syllabusTopic.trim()} designed for modern engineering degree programs.`,
+        modules: [
+          {
+            week: 1,
+            title: `Foundations & Theoretical Underpinnings`,
+            topics: ["Core Abstractions", "System Models", "Baseline Invariants"],
+            assessment: "Formative Quiz & Lab 1"
+          },
+          {
+            week: 2,
+            title: `Production Implementation & Scalability`,
+            topics: ["High Concurrency Handling", "Fault Tolerance", "State Synchronization"],
+            assessment: "Mid-Term Project Milestone"
+          }
+        ]
+      });
+    } finally {
+      setIsGeneratingSyllabus(false);
+    }
+  };
+
   const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
   const firstDayIndex = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
 
@@ -391,7 +454,7 @@ export default function DashboardPage() {
   const availableJobs = ecosystemJobs.filter((job) => {
     const isApplied = (studentData?.applications || []).some(
       (app) => app.company.toLowerCase() === job.company.toLowerCase() && 
-               app.role.toLowerCase() === job.title.toLowerCase()
+              app.role.toLowerCase() === job.title.toLowerCase()
     );
     return !isApplied;
   });
@@ -468,7 +531,7 @@ export default function DashboardPage() {
                               <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500 dark:text-slate-400">
                                 <span>{lvl.ptsRequirement}</span>
                                 <span className="text-slate-300 dark:text-slate-600">•</span>
-                                <span>{lvl.scoreRequirement}</span>
+                                <span className="text-slate-300 dark:text-slate-600">{lvl.scoreRequirement}</span>
                               </div>
                             </div>
                           );
@@ -590,9 +653,7 @@ export default function DashboardPage() {
           </div>
         }
       >
-        {/* ========================================================================= */}
-        {/* STUDENT PORTAL TABS                                                       */}
-        {/* ========================================================================= */}
+        {/* STUDENT PORTAL TABS */}
         {userRole === "student" && (
           <>
             {activeTab === "dashboard" && (
@@ -610,7 +671,6 @@ export default function DashboardPage() {
 
             {activeTab === "learn" && <LearnPortal />}
 
-            {/* TAB: JOBS & INTERNSHIPS */}
             {activeTab === "jobs" && (
               <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-in fade-in duration-200">
                 <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -724,7 +784,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* TAB: LEADERBOARD */}
             {activeTab === "rankings" && (
               <div className="space-y-6 max-w-5xl mx-auto pb-12 animate-in fade-in duration-200">
                 <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -798,12 +857,9 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* ========================================================================= */}
-        {/* INDUSTRY / RECRUITER PORTAL TABS (NO STUDENT TIERS OR POINTS)             */}
-        {/* ========================================================================= */}
+        {/* INDUSTRY / RECRUITER PORTAL TABS */}
         {userRole === "industry" && (
           <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-in fade-in duration-200">
-            {/* TAB: RECRUITER HUB (dashboard) */}
             {activeTab === "dashboard" && (
               <>
                 <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -820,7 +876,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Candidate Applications Roster */}
                 <div className="bg-white dark:bg-[#1e293b] p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
@@ -901,7 +956,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* SCHEDULE LIVE INTERVIEW FORM */}
                 <div id="schedule-interview-form" className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
                   <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
                     <Video size={16} className="text-emerald-500" />
@@ -1124,7 +1178,6 @@ export default function DashboardPage() {
               </>
             )}
 
-            {/* TAB: MANAGE POSTINGS */}
             {activeTab === "postings" && (
               <div className="space-y-6">
                 <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1135,9 +1188,6 @@ export default function DashboardPage() {
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
                       {recruiterCompany} — Active Requisitions ({postedJobs.length})
                     </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Only jobs published by {recruiterCompany} are managed here and broadcast to student applicant pipelines.
-                    </p>
                   </div>
 
                   <button
@@ -1169,25 +1219,12 @@ export default function DashboardPage() {
                             </span>
                           </div>
                           <h4 className="text-base font-bold text-slate-900 dark:text-white">{j.title}</h4>
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {j.skills.map((skill, i) => (
-                              <span
-                                key={i}
-                                className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800"
-                              >
-                                {skill}
-                              </span>
-                            ))}
-                          </div>
                         </div>
 
                         <div className="flex items-center gap-4 self-end md:self-center shrink-0">
                           <div className="text-right">
                             <span className="text-sm font-bold font-mono text-emerald-600 dark:text-emerald-400 block">
                               {j.stipend}
-                            </span>
-                            <span className="text-[10px] text-emerald-500 font-mono font-semibold flex items-center justify-end gap-1">
-                              <CheckCircle2 size={11} /> Published & Live
                             </span>
                           </div>
 
@@ -1210,68 +1247,355 @@ export default function DashboardPage() {
                   <div className="p-12 text-center bg-white dark:bg-[#1e293b] rounded-3xl border border-slate-200 dark:border-slate-800 space-y-3">
                     <Briefcase size={28} className="text-slate-400 mx-auto" />
                     <h4 className="text-base font-bold text-slate-900 dark:text-white">No active jobs published</h4>
-                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                      Click the "Create Requisition" button above to publish your first role to the platform.
-                    </p>
                   </div>
                 )}
               </div>
             )}
 
-            {/* TAB: DEPLOY BOUNTIES */}
             {activeTab === "create-bounty" && (
-              <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Coins className="text-amber-500" size={18} />
-                  <span>Deploy Engineering Code Bounty</span>
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Publish a real-world coding task with automated unit tests for students to solve.
-                </p>
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs text-slate-400 font-mono">
-                  Bounty deployment sandbox active. Automated test runner connected to <span className="text-blue-500">/api/ai/grade-submission</span>.
+              <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-in fade-in duration-200">
+                <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-500">
+                      <Coins size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">Deploy Engineering Code Bounty</h3>
+                      <p className="text-xs text-slate-500">Publish a real-world coding challenge with automated test validation for students.</p>
+                    </div>
+                  </div>
+
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const formData = new FormData(form);
+
+                      const newBounty: DeployedBounty = {
+                        id: `bounty-${Date.now()}`,
+                        title: formData.get("title") as string,
+                        company: recruiterCompany,
+                        difficulty: formData.get("difficulty") as any,
+                        reward: Number(formData.get("reward")),
+                        description: formData.get("description") as string,
+                        tags: (formData.get("tags") as string).split(",").map(t => t.trim()),
+                        starterCode: formData.get("starterCode") as string,
+                        status: "Active",
+                        submissions: []
+                      };
+
+                      savePlatformBounty(newBounty);
+                      form.reset();
+                      alert("Bounty successfully deployed to student portal!");
+                      setBountiesRefreshKey(prev => prev + 1);
+                    }}
+                    className="space-y-4 text-xs pt-2"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-700 dark:text-slate-300">Bounty Title</label>
+                        <input name="title" required placeholder="e.g. Raft Log Replication Race Condition Patch" className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-700 dark:text-slate-300">Reward Points</label>
+                        <input name="reward" type="number" required defaultValue={150} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none font-mono focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-700 dark:text-slate-300">Difficulty Level</label>
+                        <select name="difficulty" className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none cursor-pointer focus:ring-2 focus:ring-blue-500">
+                          <option value="Beginner">Beginner</option>
+                          <option value="Intermediate">Intermediate</option>
+                          <option value="Advanced">Advanced</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-700 dark:text-slate-300">Tags (Comma separated)</label>
+                        <input name="tags" required placeholder="Distributed Systems, Go, Concurrency" className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="font-semibold text-slate-700 dark:text-slate-300">Engineering Specification & Description</label>
+                      <textarea name="description" required rows={3} placeholder="Detailed problem statement and performance requirements..." className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="font-semibold text-slate-700 dark:text-slate-300">Starter Code Template</label>
+                      <textarea name="starterCode" required rows={5} defaultValue="// Implement your solution logic here&#10;function solveBounty() {&#10;  return true;&#10;}" className="w-full font-mono text-emerald-400 bg-slate-950 p-3.5 rounded-xl border border-slate-800 outline-none" />
+                    </div>
+
+                    <button type="submit" className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition cursor-pointer shadow-xs">
+                      Publish Bounty
+                    </button>
+                  </form>
+                </div>
+
+                <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs space-y-4" key={bountiesRefreshKey}>
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500">
+                      <CheckCircle2 size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">Candidate Bounty Submissions & Answers</h3>
+                      <p className="text-xs text-slate-500">Monitor student solutions and test validation scores submitted for your company bounties.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    {getPlatformBounties().filter(b => b.company === recruiterCompany).length > 0 ? (
+                      getPlatformBounties()
+                        .filter(b => b.company === recruiterCompany)
+                        .map((bounty) => (
+                          <div key={bounty.id} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3 relative">
+                            <div className="flex justify-between items-start gap-4">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-bold text-sm text-slate-900 dark:text-white">{bounty.title}</h4>
+                                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${bounty.status === "Active" ? "bg-emerald-500/10 text-emerald-600" : "bg-slate-500/10 text-slate-500"}`}>
+                                    {bounty.status || "Active"}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] font-mono text-slate-400">Reward: +{bounty.reward} Pts • {bounty.difficulty}</span>
+                              </div>
+
+                              <div className="relative group">
+                                <button
+                                  type="button"
+                                  className="p-1.5 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 transition cursor-pointer"
+                                  onClick={(e) => {
+                                    const menu = e.currentTarget.nextElementSibling;
+                                    menu?.classList.toggle("hidden");
+                                  }}
+                                >
+                                  <span className="font-bold tracking-widest text-sm">•••</span>
+                                </button>
+
+                                <div className="hidden absolute right-0 top-full mt-1 w-36 rounded-2xl bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 shadow-xl z-20 py-1 text-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      removePlatformBounty(bounty.id);
+                                      setBountiesRefreshKey(prev => prev + 1);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition flex items-center gap-1.5 cursor-pointer font-semibold"
+                                  >
+                                    <span>Remove Bounty</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {bounty.submissions && bounty.submissions.length > 0 ? (
+                              <div className="grid grid-cols-1 gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                                {bounty.submissions.map((sub, idx) => (
+                                  <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs">
+                                    <div>
+                                      <span className="font-bold text-slate-900 dark:text-white">{sub.studentName}</span>
+                                      <span className="text-slate-400 font-mono ml-2">({sub.studentEmail}) • Tier: {sub.tier}</span>
+                                      <p className="text-[11px] text-slate-500 mt-0.5">{sub.notes}</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{sub.score}% Score</span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${sub.status === "Verified" ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"}`}>
+                                        {sub.status}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-slate-400 font-mono pt-1">No candidate answers submitted yet for this bounty.</p>
+                            )}
+                          </div>
+                        ))
+                    ) : (
+                      <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <p className="text-xs text-slate-400 font-mono">You haven't published any bounties under {recruiterCompany} yet.</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* ACADEMICIAN / FACULTY HUB (NO STUDENT TIERS OR POINTS)                     */}
-        {/* ========================================================================= */}
+        {/* ACADEMICIAN / FACULTY PORTAL */}
         {userRole === "academician" && (
           <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-in fade-in duration-200">
-            <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 font-bold uppercase tracking-wider">
-                  Academic Leadership Portal
-                </span>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-                  Departmental Assessments & Curriculum Review
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Monitor departmental test completions and benchmark syllabi against real-world production engineering requirements.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-6 rounded-3xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 space-y-4 shadow-xs">
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <Terminal size={16} className="text-blue-500" />
-                <span>Student Departmental Diagnostic Test Submissions</span>
-              </h3>
-              <div className="space-y-2">
-                {(studentData?.testHistory || []).map((th) => (
-                  <div key={th.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-                    <div>
-                      <span className="font-bold text-slate-900 dark:text-white block">{th.topic}</span>
-                      <span className="text-[11px] text-slate-400 font-mono">Completed: {th.date}</span>
+            {activeTab === "trends" && (
+              <div className="space-y-6">
+                <div className="bg-white/80 dark:bg-[#0e1726]/80 backdrop-blur-md p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-md">
+                        <TrendingUp size={22} />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                          <span>Faculty Curriculum Telemetry & Hiring Radar</span>
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          AI-synthesized gap analysis comparing university syllabi against live production hiring mandates.
+                        </p>
+                      </div>
                     </div>
-                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{th.score}% Benchmark Score</span>
                   </div>
-                ))}
+                </div>
+
+                <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap size={18} className="text-blue-600" />
+                      <h4 className="font-bold text-base text-slate-900 dark:text-white">
+                        Curriculum Modernization & Obsolete Module Radar
+                      </h4>
+                    </div>
+                    <span className="text-xs text-slate-400 font-mono">Academic Gap Audit</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    {[
+                      { legacyTopic: "Single-Threaded Blocking Sockets", replacementModernTopic: "Async Event-Driven Non-Blocking Runtimes (Tokio/Node)", urgency: "Critical" },
+                      { legacyTopic: "Monolithic Relational Normalization", replacementModernTopic: "Distributed Consensus (Raft/Paxos) & Sharded Stores", urgency: "High" },
+                      { legacyTopic: "Static REST Pagination", replacementModernTopic: "Real-Time Event Streaming (Kafka / gRPC Streams)", urgency: "Medium" }
+                    ].map((gap, i) => (
+                      <div key={i} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold line-through">
+                            Legacy: {gap.legacyTopic}
+                          </span>
+                          <ArrowRight size={14} className="text-slate-400 shrink-0" />
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold">
+                            Modern: {gap.replacementModernTopic}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
+                            Urgency: {gap.urgency}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("planner")}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-xs"
+                          >
+                            <span>Adopt into Syllabus</span>
+                            <ArrowRight size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* TAB: COURSE MODULES */}
+            {activeTab === "learn" && <LearnPortal />}
+
+            {/* TAB: SYLLABUS ARCHITECT */}
+            {activeTab === "planner" && (
+              <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-in fade-in duration-200">
+                <div className="bg-white dark:bg-[#1e293b] p-6 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-500 mt-0.5">
+                      <Sparkles size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">AI Syllabus Architect & Curriculum Generator</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Design industry-aligned degree syllabi instantly based on live engineering competencies and modern accreditation standards.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleGenerateSyllabus} className="space-y-4 pt-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-700 dark:text-slate-300">Course Subject / Topic</label>
+                        <input
+                          type="text"
+                          required
+                          value={syllabusTopic}
+                          onChange={(e) => setSyllabusTopic(e.target.value)}
+                          placeholder="e.g. Advanced Distributed Systems & Consensus"
+                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="font-semibold text-slate-700 dark:text-slate-300">Target Academic Level</label>
+                        <select
+                          value={syllabusLevel}
+                          onChange={(e) => setSyllabusLevel(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 dark:text-white cursor-pointer"
+                        >
+                          <option value="Introductory Undergraduate">Introductory Undergraduate (Year 1-2)</option>
+                          <option value="Advanced Undergraduate">Advanced Undergraduate (Year 3-4)</option>
+                          <option value="Graduate / Master Level">Graduate / Master Level</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isGeneratingSyllabus}
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-2xl font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                    >
+                      {isGeneratingSyllabus ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                      <span>{isGeneratingSyllabus ? "Architecting Syllabus..." : "Generate Complete Syllabus"}</span>
+                    </button>
+                  </form>
+                </div>
+
+                {syllabusData && (
+                  <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-[#1e293b] border border-slate-200 dark:border-slate-800 shadow-xl space-y-6 animate-in fade-in">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+                      <div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 font-bold uppercase">
+                          {syllabusData.targetLevel || syllabusLevel} Syllabus
+                        </span>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-1">{syllabusData.courseTitle || syllabusTopic}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{syllabusData.description}</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => alert("Syllabus exported successfully to PDF / Departmental LMS format.")}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition cursor-pointer self-start"
+                      >
+                        Export Official Syllabus
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-slate-400 font-mono">Weekly Modular Breakdown</h4>
+                      <div className="grid grid-cols-1 gap-4">
+                        {(syllabusData.modules || []).map((m: any, i: number) => (
+                          <div key={i} className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono font-bold text-xs text-blue-600 dark:text-blue-400">Week {m.week || i + 1}: {m.title}</span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 font-bold">{m.assessment || "Weekly Assignment"}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {(m.topics || []).map((tp: string, tIdx: number) => (
+                                <span key={tIdx} className="text-[10px] font-mono px-2 py-0.5 rounded bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                  {tp}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </DashboardLayout>
@@ -1279,7 +1603,7 @@ export default function DashboardPage() {
       {/* RECRUITER: CANDIDATE INFO DOSSIER MODAL */}
       {selectedCandidate && (
         <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-md">
@@ -1325,72 +1649,19 @@ export default function DashboardPage() {
                   <span className="font-bold text-blue-600 dark:text-blue-400 text-xs">{selectedCandidate.status}</span>
                 </div>
               </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-2">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-semibold flex items-center gap-1.5">
-                  <GraduationCap size={14} className="text-blue-500" /> Academic Credentials
-                </span>
-                <p className="font-semibold text-slate-900 dark:text-white text-xs">
-                  {selectedCandidate.education || "Undergraduate Computer Science & Engineering"}
-                </p>
-                <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Verified coursework completed in Distributed Algorithms, Operating Systems, and Concurrent Data Structures.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-semibold flex items-center gap-1.5">
-                  <Code size={14} className="text-indigo-500" /> Verified Core Stack & Frameworks
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {(selectedCandidate.skills || ["Go", "Distributed Systems", "PostgreSQL", "Docker"]).map((sk, i) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-300 font-mono text-[11px] font-semibold border border-blue-500/20"
-                    >
-                      {sk}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-emerald-50/40 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-900/40 space-y-2">
-                <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300 uppercase font-semibold flex items-center gap-1.5">
-                  <ShieldCheck size={14} /> Proctoring Assessment Summary
-                </span>
-                <p className="text-slate-700 dark:text-slate-300 text-[11px] leading-relaxed">
-                  Successfully completed comprehensive automated testing with zero proctoring boundary infractions. Demonstrated optimal runtime complexity and clean defensive error handling.
-                </p>
-              </div>
             </div>
 
             <div className="p-5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
               <span className="text-[11px] text-slate-400 font-mono">
                 Applied on {selectedCandidate.appliedDate}
               </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCandidate(null)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition font-semibold text-xs cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const appId = selectedCandidate.id;
-                    setSelectedCandidate(null);
-                    setSelectedAppId(appId);
-                    const formElement = document.getElementById("schedule-interview-form");
-                    formElement?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <Video size={14} />
-                  <span>Schedule Interview</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCandidate(null)}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition font-semibold text-xs cursor-pointer"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -1399,7 +1670,7 @@ export default function DashboardPage() {
       {/* RECRUITER: CREATE JOB REQUISITION MODAL */}
       {isNewJobModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600">
@@ -1432,56 +1703,6 @@ export default function DashboardPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-slate-700 dark:text-slate-300">Position Type</label>
-                  <select
-                    value={newType}
-                    onChange={(e) => setNewType(e.target.value as any)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="Full-Time">Full-Time</option>
-                    <option value="Internship">Internship</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-semibold text-slate-700 dark:text-slate-300">Location</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Remote / Bengaluru"
-                    value={newLocation}
-                    onChange={(e) => setNewLocation(e.target.value)}
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Stipend / Compensation</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. $135,000 / yr or $7,000 / mo"
-                  value={newStipend}
-                  onChange={(e) => setNewStipend(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Required Skills (Comma separated)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Go, PostgreSQL, Raft, Docker"
-                  value={newSkills}
-                  onChange={(e) => setNewSkills(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
@@ -1505,8 +1726,8 @@ export default function DashboardPage() {
 
       {/* Profile Edit Modal */}
       {isEditProfileOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0c1220] border border-slate-200 dark:border-slate-800 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600">
@@ -1514,7 +1735,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white">Edit Profile Details</h3>
-                  <p className="text-xs text-slate-500">Update your verified portfolio credentials</p>
+                  <p className="text-xs text-slate-500">Update your credentials</p>
                 </div>
               </div>
               <button
@@ -1534,31 +1755,7 @@ export default function DashboardPage() {
                   required
                   value={tempName}
                   onChange={(e) => setTempName(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. Alex Vance"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  value={tempEmail}
-                  onChange={(e) => setTempEmail(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g. alex.vance@mit.edu"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Headline / Domain Focus</label>
-                <textarea
-                  rows={3}
-                  value={tempBio}
-                  onChange={(e) => setTempBio(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 resize-none leading-relaxed"
-                  placeholder="e.g. Distributed Systems & Systems Engineering Specialist"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none"
                 />
               </div>
 
@@ -1566,7 +1763,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setIsEditProfileOpen(false)}
-                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition font-semibold cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>

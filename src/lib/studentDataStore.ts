@@ -28,6 +28,85 @@ export interface TestHistoryItem {
   efficiencyRating: string;
   studyRecommendation: string;
 }
+export interface DeployedBounty {
+  id: string;
+  title: string;
+  company: string;
+  difficulty: "Beginner" | "Intermediate" | "Advanced";
+  reward: number;
+  description: string;
+  tags: string[];
+  starterCode: string;
+  status: "Active" | "Closed";
+  submissions?: {
+    studentName: string;
+    studentEmail: string;
+    tier: string;
+    score: number;
+    status: string;
+    code: string;
+    notes: string;
+  }[];
+}
+
+const BOUNTIES_KEY = "skillbridge_platform_bounties_v1";
+
+export function getPlatformBounties(): DeployedBounty[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(BOUNTIES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Error loading bounties", e);
+  }
+
+  // Default initial active bounty if nothing is stored yet
+  const defaults: DeployedBounty[] = [
+    {
+      id: "bounty-1",
+      title: "Raft Log Replication Edge-Case Patch",
+      company: "Cloudflare",
+      difficulty: "Advanced",
+      reward: 150,
+      description: "Fix a race condition in leader election term matching during partitioned network reconnects.",
+      tags: ["Distributed Systems", "Go/TS", "Concurrency"],
+      starterCode: "function resolvePartition(term: number, log: any[]): boolean {\n  // Implement consensus verification here\n  return true;\n}",
+      status: "Active",
+      submissions: []
+    }
+  ];
+  
+  localStorage.setItem(BOUNTIES_KEY, JSON.stringify(defaults));
+  return defaults;
+}
+
+export function savePlatformBounty(bounty: DeployedBounty) {
+  if (typeof window === "undefined") return;
+  try {
+    const bounties = getPlatformBounties();
+    bounties.unshift(bounty);
+    localStorage.setItem(BOUNTIES_KEY, JSON.stringify(bounties));
+    window.dispatchEvent(new Event("platform_bounties_updated"));
+  } catch (e) {
+    console.error("Error saving bounty", e);
+  }
+}
+export function removePlatformBounty(bountyId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const bounties = getPlatformBounties();
+    const filtered = bounties.filter(b => b.id !== bountyId);
+    localStorage.setItem(BOUNTIES_KEY, JSON.stringify(filtered));
+    window.dispatchEvent(new Event("platform_bounties_updated"));
+  } catch (e) {
+    console.error("Error removing bounty", e);
+  }
+}
 
 export interface StudentProfileData {
   modulesCompleted: number;

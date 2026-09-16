@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { groq } from "@ai-sdk/groq"; // <-- Use Groq
